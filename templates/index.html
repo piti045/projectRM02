@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <title>เว็บแปลภาษามือ</title>
+    <style>
+        body { font-family: Arial, sans-serif; background:#f0f0f0; text-align:center; }
+        h1 { color:#333; margin-top:20px; }
+        #video-container { display:inline-block; position:relative; }
+        #status {
+            position:absolute;
+            top:10px; left:10px;
+            background:rgba(0,0,0,0.5);
+            color:#fff; padding:5px 10px; border-radius:5px;
+            text-align:left;
+            font-size:14px;
+        }
+        img { border:2px solid #444; }
+    </style>
+</head>
+<body>
+    <h1>เว็บแปลภาษามือ</h1>
+    <div id="video-container">
+        <div id="status">
+            <div><strong>Word:</strong> <span id="word">-</span></div>
+            <div><strong>Sentence:</strong> <span id="sentence">-</span></div>
+        </div>
+        <img src="{{ url_for('video_feed') }}" id="video">
+    </div>
+    <script>
+        // ดึงข้อมูล prediction ทุก 500 มิลลิวินาที
+        async function fetchStatus() {
+            try {
+                const res = await fetch('/status');
+                const data = await res.json();
+                document.getElementById('word').textContent = data.prediction || '-';
+                document.getElementById('sentence').textContent = data.sentence || '-';
+            } catch (e) {
+                // เงียบถ้าล้มเหลว
+            }
+        }
+        setInterval(fetchStatus, 500);
+    </script>
+</body>
+</html>

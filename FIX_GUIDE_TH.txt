@@ -1,0 +1,101 @@
+🔍 **ตรวจสอบปัญหา "ข้อความไม่ขึ้น" - คำแนะนำทีละขั้น**
+
+---
+
+## 🚨 สาเหตุหลัก
+
+1. **โครงสร้าง dataset ผิด/ไม่ถูกต้อง**
+   - `collect_data.py` บันทึก: `dataset/action/seq_number/frame_number.npy`
+   - `train_model.py` (เดิม) หา `.npy` ที่ระดับผิด ทำให้โหลดได้ 0 ไฟล์
+
+2. **โมเดลไม่ถูกสร้าง หรือถูกสร้างด้วยข้อมูลผิด**
+   - ถ้า X.shape = (0,) แปลว่าไม่อ่านเข้ามาเลย
+   - โมเดลจึงเดาแบบสุ่มหรือไม่ดี
+
+---
+
+## ✅ วิธีแก้ (4 ขั้น)
+
+### **ขั้น 1: ตรวจสอบ Dataset**
+
+```bash
+python debug_dataset.py
+```
+
+ดูผลลัพธ์:
+- ✅ ถ้าเห็น "Sequences loaded: 100+" → ชาญชาญได้ไปขั้น 2
+- ❌ ถ้าเห็น "Sequences loaded: 0" → ปัญหา dataset หรือ structure
+
+---
+
+### **ขั้น 2: เทรนใหม่ด้วย train_model.py แก้ไข**
+
+```bash
+python train_model.py
+```
+
+ดู output:
+- ✅ X shape should be `(num_samples, 30, 375)`
+- ✅ Train loss ลดลง (ไม่ติดค่า เหมือน validation loss สูงๆ)
+- ✅ model.h5 ถูกสร้างขึ้นใหม่
+
+---
+
+### **ขั้น 3: ทดสอบ app.py**
+
+```bash
+python app.py
+```
+
+ดูคอนโซล:
+- ✅ ต้องเห็น `Actions loaded: [...]` ที่ตรงกับชื่อโฟลเดอร์ใน dataset
+- ✅ `Model loaded successfully`
+- เมื่อทำท่า ต้องเห็น `✅ Detected: word_name (confidence)`
+
+หน้าเว็บ:
+- ✅ วิดีโอปรากฏ + แถบคำ/ประโยคในมุมบนซ้าย
+
+---
+
+### **ขั้น 4: Troubleshooting**
+
+**❌ "ไม่มี sequences ถูกโหลด"**
+→ ตรวจสอบโครงสร้าง:
+```
+dataset/
+  hello/
+    0/        ← ต้องมี subdirectory (sequence)
+      0.npy
+      1.npy
+      ...
+      29.npy
+    1/
+      ...
+```
+
+ถ้า structure ต่างกัน ให้รัน `collect_data.py` ใหม่เพื่อเก็บข้อมูลใหม่
+
+**❌ "Low confidence / ไม่ตรงตามที่เทรน"**
+→ ปัญหาอาจเกิดจาก:
+- มุมกล้อง / แสง / ระยะทางต่าง
+- ท่ามือไม่ตรงกับตอนเทรน
+- ปล่อย sequence ครบ 30 frames แล้วนิ่ง 2-3 วินาที เพื่อให้ inactivity ทำงาน
+
+**❌ "ข้อความไม่แสดงในเว็บ"**
+→ สังเกตคอนโซล:
+- `🔍 probabilities:` ควรแสดง ถ้าไม่มี → sequence หรือการตรวจจับมือมีปัญหา
+- `🛑 Inactivity, final phrase:` ต้องปรากฏเมื่อหยุดท่า
+
+---
+
+## 💡 สำคัญ
+
+📌 **ทุกครั้งที่ edit `collect_data.py` ให้ run เพื่อเก็บข้อมูลใหม่ แล้ว train ใหม่**
+
+📌 **keypoints size ต้อง = 375 เสมอ** (Pose:99 + Face:150 + HandL:63 + HandR:63)
+
+📌 **ชื่อ actions ต้องตรงกับชื่อโฟลเดอร์ใน dataset** (ตอนนี้ app.py อ่านอัตโนมัติเรียบร้อย)
+
+---
+
+ถ้าทำตาม 4 ขั้นนี้แล้วยังไม่ได้ ให้บอกผล log จาก `debug_dataset.py` และ `train_model.py` มา 🎯
