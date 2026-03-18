@@ -150,7 +150,7 @@ def load_model_labels(expected_len):
         if isinstance(labels, list) and len(labels) == expected_len:
             return [str(x) for x in labels]
     except Exception as exc:
-        print(f"⚠️ Failed to load model labels: {exc}")
+        print(f"[WARN] Failed to load model labels: {exc}")
     return None
 
 
@@ -198,13 +198,13 @@ def load_runtime_model():
         model_actions = labels
         model_last_trained = time.strftime("%Y-%m-%d %H:%M:%S")
 
-        print(f"✅ Model loaded successfully ({model_output_dim} classes)")
-        print(f"📝 Model actions: {model_actions}")
+        print(f"[OK] Model loaded successfully ({model_output_dim} classes)")
+        print(f"[INFO] Model actions: {model_actions}")
     except Exception as exc:
         model = None
         model_output_dim = 0
         model_actions = []
-        print(f"❌ Failed to load model: {exc}")
+        print(f"[ERROR] Failed to load model: {exc}")
 
     refresh_runtime_config()
 
@@ -324,9 +324,9 @@ def train_model_job():
             raise ValueError("Need at least 2 gestures before training")
 
         X, y, skipped = load_training_samples(train_actions)
-        print(f"📦 Training samples loaded: {X.shape[0]}")
+        print(f"[LOAD] Training samples loaded: {X.shape[0]}")
         if skipped:
-            print(f"⚠️ Skipped sequences: {len(skipped)}")
+            print(f"[WARN] Skipped sequences: {len(skipped)}")
 
         if X.shape[0] < len(train_actions) * 2:
             raise ValueError("Not enough sequences. Record at least 2 sequences per gesture.")
@@ -347,12 +347,12 @@ def train_model_job():
             )
             validation_data = (X_test, y_test)
             callbacks = [EarlyStopping(monitor="val_loss", patience=8, restore_best_weights=True)]
-            print(f"🧪 Validation enabled. Train={X_train.shape[0]}, Val={X_test.shape[0]}")
+            print(f"[OK] Validation enabled. Train={X_train.shape[0]}, Val={X_test.shape[0]}")
         else:
             X_train, y_train = X, y_one_hot
             validation_data = None
             callbacks = []
-            print("⚠️ Validation skipped due to limited data")
+            print("[WARN] Validation skipped due to limited data")
 
         new_model = Sequential(
             [
@@ -395,12 +395,12 @@ def train_model_job():
             model_needs_retrain = False
 
         refresh_runtime_config()
-        print("✅ Training complete and model reloaded")
+        print("[OK] Training complete and model reloaded")
 
     except Exception as exc:
         with state_lock:
             model_training_error = str(exc)
-        print(f"❌ Training failed: {exc}")
+        print(f"[ERROR] Training failed: {exc}")
     finally:
         with state_lock:
             model_training = False
@@ -462,7 +462,7 @@ def camera_loop():
     global frame_global, prediction, prediction_confidence
     global sequence, last_pred_time, last_word_time, sentence, frame_count
 
-    print("📷 Camera thread started")
+    print("[CAMERA] Camera thread started")
     
     target_fps = 30
     inactivity_threshold = 2.5
@@ -485,7 +485,7 @@ def camera_loop():
         try:
             results = holistic.process(rgb)
         except Exception as e:
-            print(f"⚠️ Detection error: {e}")
+            print(f"[WARNING] Detection error: {e}")
             results = None
             continue
 
@@ -531,13 +531,13 @@ def camera_loop():
                             "saved_at": time.strftime("%Y-%m-%d %H:%M:%S"),
                         }
                     refresh_runtime_config()
-                    print(f"💾 Saved sequence {rec_action}/{seq_id}")
+                    print(f"[SAVE] Saved sequence {rec_action}/{seq_id}")
                 except Exception as exc:
                     with state_lock:
                         recording_state["active"] = False
                         recording_state["buffer"] = []
                         recording_state["error"] = str(exc)
-                    print(f"❌ Failed to save recording: {exc}")
+                    print(f"[ERROR] Failed to save recording: {exc}")
 
         with state_lock:
             local_model = model
@@ -569,14 +569,14 @@ def camera_loop():
                         if len(sentence) == 0 or sentence[-1] != word:
                             sentence.append(word)
                             last_word_time = time.time()
-                            print(f"✅ Detected: {word} ({conf:.2f})")
+                            print(f"[DETECT] {word} ({conf:.2f})")
 
                     prediction = word
                     prediction_confidence = conf
                     last_pred_time = time.time()
 
                 except Exception as exc:
-                    print(f"⚠️ Model prediction error: {exc}")
+                    print(f"[ERROR] Model prediction error: {exc}")
                     prediction = ""
                     prediction_confidence = 0.0
 
@@ -588,7 +588,7 @@ def camera_loop():
         # ถ้าไม่มีมือนานกว่ากำหนด ให้ถือว่าเป็นจุดสิ้นสุดประโยค
         if time.time() - last_hand_time > inactivity_threshold and sentence:
             phrase = " ".join(sentence)
-            print(f"🛑 Inactivity, final phrase: {phrase}")
+            print(f"[END] Inactivity, final phrase: {phrase}")
             sentence = []
             sequence.clear()
             # รีเซ็ตสถานะการทำนายด้วย
@@ -836,12 +836,12 @@ if __name__ == "__main__":
     try:
         t = threading.Thread(target=camera_loop, daemon=True)
         t.start()
-        print("✅ Starting Flask Web Server...")
-        print("📱 Open browser at: http://localhost:5000")
+        print("[OK] Starting Flask Web Server...")
+        print("[INFO] Open browser at: http://localhost:5000")
         app.run(debug=False, threaded=True, host='0.0.0.0')
     except KeyboardInterrupt:
-        print("\n❌ Shutting down...")
+        print("\n[STOP] Shutting down...")
     finally:
         cap.release()
         cv2.destroyAllWindows()
-        print("✅ Camera released")
+        print("[OK] Camera released")

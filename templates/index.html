@@ -196,8 +196,8 @@
                 <hr>
 
                 <div class="field">
-                    <label for="gesture-select">เลือก gesture เพื่อบันทึก 1 sequence (30 เฟรม)</label>
-                    <select id="gesture-select"></select>
+                    <label for="record-gesture-input">พิมพ์ชื่อ gesture เพื่อบันทึก 1 sequence (30 เฟรม)</label>
+                    <input id="record-gesture-input" placeholder="เช่น shake_hand หรือถ้าเป็นคำที่มีอยู่ก็พิมพ์ชื่อนั้น">
                 </div>
 
                 <div class="button-row">
@@ -233,7 +233,7 @@
         const newMeaningEl = document.getElementById('new-meaning');
         const addGestureBtn = document.getElementById('add-gesture-btn');
 
-        const gestureSelectEl = document.getElementById('gesture-select');
+        const recordGestureInputEl = document.getElementById('record-gesture-input');
         const recordBtn = document.getElementById('record-btn');
         const recordStatusEl = document.getElementById('record-status');
 
@@ -264,21 +264,15 @@
                 const data = await res.json();
                 const gestures = data.gestures || [];
 
-                gestureSelectEl.innerHTML = '';
                 gestureListEl.innerHTML = '';
 
                 for (const g of gestures) {
-                    const option = document.createElement('option');
-                    option.value = g.action;
-                    option.textContent = `${g.action} (${g.meaning})`;
-                    gestureSelectEl.appendChild(option);
-
                     const li = document.createElement('li');
                     li.textContent = `${g.action} = ${g.meaning} | samples: ${g.samples}`;
                     gestureListEl.appendChild(li);
                 }
 
-                recordBtn.disabled = gestures.length === 0;
+                recordBtn.disabled = false;
             } catch (e) {
                 gestureListEl.innerHTML = '<li>โหลดรายการคำศัพท์ไม่สำเร็จ</li>';
             }
@@ -319,24 +313,44 @@
         }
 
         async function startRecording() {
-            const action = gestureSelectEl.value;
-            if (!action) {
-                alert('กรุณาเลือก gesture ก่อน');
+            const action_name = recordGestureInputEl.value.trim();
+            if (!action_name) {
+                alert('กรุณาพิมพ์ชื่อ gesture ที่ต้องการบันทึก');
                 return;
             }
 
             recordBtn.disabled = true;
             try {
-                const res = await fetch('/api/record/start', {
+                // Step 1: ตรวจสอบ/เพิ่ม gesture ถ้ายังไม่มี
+                const gestureRes = await fetch('/api/gestures', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ action })
+                    body: JSON.stringify({ name: action_name, meaning: action_name })
                 });
-                const data = await res.json();
 
-                if (!res.ok) {
-                    alert(data.error || 'เริ่มบันทึกไม่สำเร็จ');
+                if (!gestureRes.ok && gestureRes.status !== 200) {
+                    const err = await gestureRes.json();
+                    alert(err.error || 'ไม่สามารถเพิ่มหรือโหลด gesture ได้');
+                    return;
                 }
+
+                const gestureData = await gestureRes.json();
+                const finalActionName = gestureData.action;
+
+                // Step 2: เริ่มบันทึก
+                const recordRes = await fetch('/api/record/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action: finalActionName })
+                });
+                const recordData = await recordRes.json();
+
+                if (!recordRes.ok) {
+                    alert(recordData.error || 'เริ่มบันทึกไม่สำเร็จ');
+                    return;
+                }
+
+                await loadGestures();
             } catch (e) {
                 alert('ไม่สามารถเริ่มบันทึกได้');
             } finally {
