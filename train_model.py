@@ -1,5 +1,6 @@
 import numpy as np
 import os
+import json
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.utils import to_categorical
 from tensorflow.keras.models import Sequential
@@ -7,6 +8,7 @@ from tensorflow.keras.layers import LSTM, Dense, Dropout
 from tensorflow.keras.callbacks import EarlyStopping
 
 DATA_PATH = "dataset"
+MODEL_LABELS_PATH = "model_labels.json"
 
 # ===== โหลด actions จากชื่อโฟลเดอร์ =====
 actions = sorted(np.array([d for d in os.listdir(DATA_PATH) 
@@ -66,7 +68,7 @@ model = Sequential([
     LSTM(128, return_sequences=False, activation='relu'),
     Dropout(0.3),
     Dense(64, activation='relu'),
-    Dense(actions.shape[0], activation='softmax')
+    Dense(len(actions), activation='softmax')
 ])
 
 model.compile(
@@ -89,4 +91,7 @@ model.fit(
 )
 
 model.save("model.h5")
+with open(MODEL_LABELS_PATH, "w", encoding="utf-8") as f:
+    json.dump(actions.tolist(), f, ensure_ascii=False, indent=2)
 print("✅ Model saved as model.h5")
+print(f"✅ Model labels saved as {MODEL_LABELS_PATH}")

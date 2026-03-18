@@ -3,60 +3,106 @@ import mediapipe as mp
 import numpy as np
 import os
 
-VIDEO_PATH = "videos"     # โฟลเดอร์วิดีโอ
-DATA_PATH = "dataset"    # โฟลเดอร์เก็บข้อมูล
-SEQUENCE_LENGTH = 30     # 30 frame ต่อ 1 sample
+VIDEO_PATH = "videos"
+DATA_PATH = "dataset"
+SEQUENCE_LENGTH = 30
+FEATURE_SIZE = 375
 
-mp_hands = mp.solutions.hands
-mp_face = mp.solutions.face_mesh
-mp_pose = mp.solutions.pose
+mp_holistic = mp.solutions.holistic
 
-hands = mp_hands.Hands()
-face = mp_face.FaceMesh()
-pose = mp_pose.Pose()
+holistic = mp_holistic.Holistic(
+    static_image_mode=False,
+    model_complexity=1,
+    smooth_landmarks=True,
+    min_detection_confidence=0.7,
+    min_tracking_confidence=0.7,
+)
 
-def extract_landmarks(h, f, p):
+
+def extract_landmarks(results):
     data = []
 
-    # มือ (21 จุด * 3)
-    if h.multi_hand_landmarks:
-        for lm in h.multi_hand_landmarks[0].landmark:
+    # Pose: 33 * 3 = 99
+    if results.pose_landmarks:
+        for lm in results.pose_landmarks.landmark:
             data.extend([lm.x, lm.y, lm.z])
     else:
-        data.extend([0]*63)
+        data.extend([0] * 99)
 
-    # หน้า (50 จุดแรก)
-    if f.multi_face_landmarks:
-        for lm in f.multi_face_landmarks[0].landmark[:50]:
+    # Face: first 50 * 3 = 150
+    if results.face_landmarks:
+        for lm in results.face_landmarks.landmark[:50]:
             data.extend([lm.x, lm.y, lm.z])
     else:
-        data.extend([0]*150)
+        data.extend([0] * 150)
 
-    # ท่าทาง (33 จุด)
-    if p.pose_landmarks:
-        for lm in p.pose_landmarks.landmark:
+    # Left hand: 21 * 3 = 63
+    if results.left_hand_landmarks:
+        for lm in results.left_hand_landmarks.landmark:
             data.extend([lm.x, lm.y, lm.z])
     else:
-        data.extend([0]*99)
+        data.extend([0] * 63)
 
-    return np.array(data)
+    # Right hand: 21 * 3 = 63
+    if results.right_hand_landmarks:
+        for lm in results.right_hand_landmarks.landmark:
+            data.extend([lm.x, lm.y, lm.z])
+    else:
+        data.extend([0] * 63)
+
+    arr = np.array(data)
+    if arr.shape[0] != FEATURE_SIZE:
+        raise ValueError(f"Feature size mismatch: {arr.shape[0]}")
+
+    return arr
 
 
-for action in os.listdir(VIDEO_PATH):
+def get_next_sequence_id(action_path):
+    seq_ids = []
+    for name in os.listdir(action_path):
+        full_path = os.path.join(action_path, name)
+        if os.path.isdir(full_path) and name.isdigit():
+            seq_ids.append(int(name))
+    return (max(seq_ids) + 1) if seq_ids else 0
+
+
+def save_sequence(action_path, seq_id, sequence_frames):
+    seq_path = os.path.join(action_path, str(seq_id))
+    os.makedirs(seq_path, exist_ok=True)
+
+    for idx, frame_data in enumerate(sequence_frames):
+        np.save(os.path.join(seq_path, f"{idx}.npy"), frame_data)
+
+    print(f"✅ Saved sequence: {os.path.basename(action_path)}/{seq_id}")
+
+
+if not os.path.exists(VIDEO_PATH):
+    print(f"❌ Video folder not found: {VIDEO_PATH}")
+    exit()
+
+os.makedirs(DATA_PATH, exist_ok=True)
+
+for action in sorted(os.listdir(VIDEO_PATH)):
     action_path = os.path.join(VIDEO_PATH, action)
+    if not os.path.isdir(action_path):
+        continue
+
     save_path = os.path.join(DATA_PATH, action)
     os.makedirs(save_path, exist_ok=True)
 
-    print("📂 Action:", action)
+    print(f"\n📂 Action: {action}")
 
-    for video_file in os.listdir(action_path):
+    for video_file in sorted(os.listdir(action_path)):
         video_path = os.path.join(action_path, video_file)
-        print("🎬 Opening:", video_path)
+        if not os.path.isfile(video_path):
+            continue
+
+        print(f"🎬 Opening: {video_path}")
 
         cap = cv2.VideoCapture(video_path)
 
         if not cap.isOpened():
-            print("❌ Cannot open video:", video_file)
+            print(f"❌ Cannot open video: {video_file}")
             continue
 
         frames = []
@@ -69,25 +115,24 @@ for action in os.listdir(VIDEO_PATH):
             frame = cv2.resize(frame, (640, 480))
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            h = hands.process(rgb)
-            f = face.process(rgb)
-            p = pose.process(rgb)
-
-            landmarks = extract_landmarks(h, f, p)
+            results = holistic.process(rgb)
+            landmarks = extract_landmarks(results)
             frames.append(landmarks)
 
         cap.release()
-        print("🧠 Total frames:", len(frames))
+        print(f"🧠 Total frames: {len(frames)}")
 
         if len(frames) < SEQUENCE_LENGTH:
-            print("⚠ Not enough frames, skipped:", video_file)
+            print(f"⚠ Not enough frames, skipped: {video_file}")
             continue
 
-        for i in range(0, len(frames) - SEQUENCE_LENGTH, SEQUENCE_LENGTH):
+        seq_id = get_next_sequence_id(save_path)
+        for i in range(0, len(frames) - SEQUENCE_LENGTH + 1, SEQUENCE_LENGTH):
             seq = frames[i:i + SEQUENCE_LENGTH]
-            file_name = f"{video_file}_{i}.npy"
-            save_file = os.path.join(save_path, file_name)
-            np.save(save_file, seq)
-            print("✅ Saved:", save_file)
+            save_sequence(save_path, seq_id, seq)
+            seq_id += 1
 
-        print("✔ Finished:", video_file)
+        print(f"✔ Finished: {video_file}")
+
+holistic.close()
+print("\n✅ Done converting videos to sequence dataset")

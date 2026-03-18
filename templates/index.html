@@ -2,44 +2,422 @@
 <html lang="th">
 <head>
     <meta charset="utf-8">
-    <title>เว็บแปลภาษามือ</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบแปลภาษามือ</title>
     <style>
-        body { font-family: Arial, sans-serif; background:#f0f0f0; text-align:center; }
-        h1 { color:#333; margin-top:20px; }
-        #video-container { display:inline-block; position:relative; }
-        #status {
-            position:absolute;
-            top:10px; left:10px;
-            background:rgba(0,0,0,0.5);
-            color:#fff; padding:5px 10px; border-radius:5px;
-            text-align:left;
-            font-size:14px;
+        :root {
+            --bg: #f7f9fc;
+            --card: #ffffff;
+            --text: #1c1f26;
+            --muted: #617087;
+            --border: #d7deea;
+            --accent: #0a6bff;
+            --accent-dark: #0955ca;
+            --danger: #cc2b2b;
+            --ok: #0f9d58;
         }
-        img { border:2px solid #444; }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            color: var(--text);
+            background: linear-gradient(140deg, #f7f9fc, #edf2ff);
+        }
+
+        .page {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1 {
+            margin: 0 0 18px;
+            font-size: 28px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1.25fr 1fr;
+            gap: 16px;
+        }
+
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 14px;
+            box-shadow: 0 8px 26px rgba(13, 42, 80, 0.07);
+        }
+
+        #video-container {
+            position: relative;
+        }
+
+        #video {
+            width: 100%;
+            border-radius: 10px;
+            border: 1px solid var(--border);
+            background: #0f172a;
+        }
+
+        #status {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background: rgba(7, 13, 25, 0.74);
+            color: #fff;
+            padding: 8px 10px;
+            border-radius: 8px;
+            font-size: 13px;
+            min-width: 220px;
+        }
+
+        .section-title {
+            margin: 0 0 10px;
+            font-size: 17px;
+        }
+
+        .section-top-gap {
+            margin-top: 14px;
+        }
+
+        .hint {
+            margin: 0 0 14px;
+            font-size: 13px;
+            color: var(--muted);
+        }
+
+        .field {
+            margin-bottom: 10px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 6px;
+            font-size: 13px;
+            color: #334155;
+        }
+
+        input, select {
+            width: 100%;
+            padding: 9px 10px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-size: 14px;
+            background: #fff;
+        }
+
+        button {
+            border: 0;
+            border-radius: 8px;
+            padding: 9px 12px;
+            color: #fff;
+            background: var(--accent);
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        button:hover { background: var(--accent-dark); }
+        button:disabled { opacity: 0.65; cursor: not-allowed; }
+
+        .button-row {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-top: 8px;
+        }
+
+        .danger { background: var(--danger); }
+        .danger:hover { background: #a92323; }
+
+        .status-box {
+            margin-top: 10px;
+            border: 1px dashed var(--border);
+            border-radius: 8px;
+            padding: 8px;
+            font-size: 13px;
+            color: #26344b;
+            white-space: pre-line;
+        }
+
+        .status-ok { color: var(--ok); }
+        .status-warn { color: var(--danger); }
+
+        #gesture-list {
+            margin: 10px 0 0;
+            padding-left: 18px;
+            max-height: 220px;
+            overflow: auto;
+            font-size: 14px;
+        }
+
+        @media (max-width: 980px) {
+            .grid { grid-template-columns: 1fr; }
+        }
     </style>
 </head>
 <body>
-    <h1>เว็บแปลภาษามือ</h1>
-    <div id="video-container">
-        <div id="status">
-            <div><strong>Word:</strong> <span id="word">-</span></div>
-            <div><strong>Sentence:</strong> <span id="sentence">-</span></div>
+    <div class="page">
+        <h1>ระบบแปลภาษามือพร้อมเพิ่มคำศัพท์ใหม่</h1>
+
+        <div class="grid">
+            <div class="card">
+                <div id="video-container">
+                    <div id="status">
+                        <div><strong>Word:</strong> <span id="word">-</span></div>
+                        <div><strong>Meaning:</strong> <span id="meaning">-</span></div>
+                        <div><strong>Sentence:</strong> <span id="sentence">-</span></div>
+                        <div><strong>Confidence:</strong> <span id="confidence">0.00</span></div>
+                    </div>
+                    <img src="{{ url_for('video_feed') }}" id="video" alt="video stream">
+                </div>
+            </div>
+
+            <div class="card">
+                <h2 class="section-title">เพิ่มคำศัพท์และเก็บข้อมูล</h2>
+                <p class="hint">ชื่อ gesture ควรเป็นภาษาอังกฤษพิมพ์เล็ก เช่น thank_you และใส่ความหมายภาษาไทยได้</p>
+
+                <div class="field">
+                    <label for="new-name">ชื่อ gesture ใหม่</label>
+                    <input id="new-name" placeholder="เช่น thank_you">
+                </div>
+
+                <div class="field">
+                    <label for="new-meaning">ความหมาย</label>
+                    <input id="new-meaning" placeholder="เช่น ขอบคุณ">
+                </div>
+
+                <div class="button-row">
+                    <button id="add-gesture-btn">เพิ่มคำศัพท์</button>
+                </div>
+
+                <hr>
+
+                <div class="field">
+                    <label for="gesture-select">เลือก gesture เพื่อบันทึก 1 sequence (30 เฟรม)</label>
+                    <select id="gesture-select"></select>
+                </div>
+
+                <div class="button-row">
+                    <button id="record-btn">เริ่มบันทึกตัวอย่าง</button>
+                </div>
+
+                <div id="record-status" class="status-box">Recording: idle</div>
+
+                <hr>
+
+                <h2 class="section-title">เทรนโมเดล</h2>
+                <p class="hint">เมื่อเพิ่มคำหรือเพิ่มข้อมูลใหม่ ให้เทรนใหม่เพื่ออัปเดตระบบแปล</p>
+
+                <div class="button-row">
+                    <button id="retrain-btn" class="danger">Train / Retrain</button>
+                </div>
+
+                <div id="model-status" class="status-box">Model status: loading...</div>
+
+                <h3 class="section-title section-top-gap">รายการคำศัพท์ในระบบ</h3>
+                <ul id="gesture-list"></ul>
+            </div>
         </div>
-        <img src="{{ url_for('video_feed') }}" id="video">
     </div>
+
     <script>
-        // ดึงข้อมูล prediction ทุก 500 มิลลิวินาที
+        const wordEl = document.getElementById('word');
+        const meaningEl = document.getElementById('meaning');
+        const sentenceEl = document.getElementById('sentence');
+        const confidenceEl = document.getElementById('confidence');
+
+        const newNameEl = document.getElementById('new-name');
+        const newMeaningEl = document.getElementById('new-meaning');
+        const addGestureBtn = document.getElementById('add-gesture-btn');
+
+        const gestureSelectEl = document.getElementById('gesture-select');
+        const recordBtn = document.getElementById('record-btn');
+        const recordStatusEl = document.getElementById('record-status');
+
+        const retrainBtn = document.getElementById('retrain-btn');
+        const modelStatusEl = document.getElementById('model-status');
+        const gestureListEl = document.getElementById('gesture-list');
+
+        function setText(el, text) {
+            el.textContent = text || '-';
+        }
+
         async function fetchStatus() {
             try {
                 const res = await fetch('/status');
                 const data = await res.json();
-                document.getElementById('word').textContent = data.prediction || '-';
-                document.getElementById('sentence').textContent = data.sentence || '-';
+                setText(wordEl, data.prediction);
+                setText(meaningEl, data.meaning);
+                setText(sentenceEl, data.sentence);
+                confidenceEl.textContent = Number(data.confidence || 0).toFixed(2);
             } catch (e) {
-                // เงียบถ้าล้มเหลว
+                // ignore
             }
         }
+
+        async function loadGestures() {
+            try {
+                const res = await fetch('/api/gestures');
+                const data = await res.json();
+                const gestures = data.gestures || [];
+
+                gestureSelectEl.innerHTML = '';
+                gestureListEl.innerHTML = '';
+
+                for (const g of gestures) {
+                    const option = document.createElement('option');
+                    option.value = g.action;
+                    option.textContent = `${g.action} (${g.meaning})`;
+                    gestureSelectEl.appendChild(option);
+
+                    const li = document.createElement('li');
+                    li.textContent = `${g.action} = ${g.meaning} | samples: ${g.samples}`;
+                    gestureListEl.appendChild(li);
+                }
+
+                recordBtn.disabled = gestures.length === 0;
+            } catch (e) {
+                gestureListEl.innerHTML = '<li>โหลดรายการคำศัพท์ไม่สำเร็จ</li>';
+            }
+        }
+
+        async function addGesture() {
+            const name = newNameEl.value.trim();
+            const meaning = newMeaningEl.value.trim();
+
+            if (!name) {
+                alert('กรุณาใส่ชื่อ gesture');
+                return;
+            }
+
+            addGestureBtn.disabled = true;
+            try {
+                const res = await fetch('/api/gestures', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name, meaning })
+                });
+
+                const data = await res.json();
+                if (!res.ok) {
+                    alert(data.error || 'เพิ่มคำศัพท์ไม่สำเร็จ');
+                    return;
+                }
+
+                newNameEl.value = '';
+                newMeaningEl.value = '';
+                await loadGestures();
+                await fetchModelStatus();
+            } catch (e) {
+                alert('ไม่สามารถเชื่อมต่อกับเซิร์ฟเวอร์');
+            } finally {
+                addGestureBtn.disabled = false;
+            }
+        }
+
+        async function startRecording() {
+            const action = gestureSelectEl.value;
+            if (!action) {
+                alert('กรุณาเลือก gesture ก่อน');
+                return;
+            }
+
+            recordBtn.disabled = true;
+            try {
+                const res = await fetch('/api/record/start', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ action })
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    alert(data.error || 'เริ่มบันทึกไม่สำเร็จ');
+                }
+            } catch (e) {
+                alert('ไม่สามารถเริ่มบันทึกได้');
+            } finally {
+                setTimeout(() => { recordBtn.disabled = false; }, 700);
+            }
+        }
+
+        async function fetchRecordStatus() {
+            try {
+                const res = await fetch('/api/record/status');
+                const data = await res.json();
+
+                if (data.active) {
+                    recordStatusEl.textContent = `Recording ${data.action}: ${data.progress}/${data.target}`;
+                    recordStatusEl.className = 'status-box';
+                } else if (data.error) {
+                    recordStatusEl.textContent = `Record error: ${data.error}`;
+                    recordStatusEl.className = 'status-box status-warn';
+                } else if (data.last_saved) {
+                    recordStatusEl.textContent = `Saved: ${data.last_saved.action}/${data.last_saved.sequence} at ${data.last_saved.saved_at}`;
+                    recordStatusEl.className = 'status-box status-ok';
+                } else {
+                    recordStatusEl.textContent = 'Recording: idle';
+                    recordStatusEl.className = 'status-box';
+                }
+            } catch (e) {
+                recordStatusEl.textContent = 'Recording status unavailable';
+                recordStatusEl.className = 'status-box status-warn';
+            }
+        }
+
+        async function retrainModel() {
+            retrainBtn.disabled = true;
+            try {
+                const res = await fetch('/api/retrain', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) {
+                    alert(data.error || 'เริ่มเทรนไม่สำเร็จ');
+                }
+            } catch (e) {
+                alert('ไม่สามารถเริ่มเทรนได้');
+            } finally {
+                setTimeout(() => { retrainBtn.disabled = false; }, 1200);
+            }
+        }
+
+        async function fetchModelStatus() {
+            try {
+                const res = await fetch('/api/model/status');
+                const data = await res.json();
+
+                const lines = [];
+                lines.push(`Loaded: ${data.loaded ? 'yes' : 'no'}`);
+                lines.push(`Training: ${data.training ? 'running' : 'idle'}`);
+                lines.push(`Need retrain: ${data.needs_retrain ? 'yes' : 'no'}`);
+                lines.push(`Classes in model: ${Array.isArray(data.trained_actions) ? data.trained_actions.length : 0}`);
+                lines.push(`Classes in dataset: ${Array.isArray(data.dataset_actions) ? data.dataset_actions.length : 0}`);
+                if (data.last_trained) lines.push(`Last trained: ${data.last_trained}`);
+                if (data.training_error) lines.push(`Error: ${data.training_error}`);
+
+                modelStatusEl.textContent = lines.join('\n');
+                modelStatusEl.className = data.training_error ? 'status-box status-warn' : 'status-box';
+            } catch (e) {
+                modelStatusEl.textContent = 'Model status unavailable';
+                modelStatusEl.className = 'status-box status-warn';
+            }
+        }
+
+        addGestureBtn.addEventListener('click', addGesture);
+        recordBtn.addEventListener('click', startRecording);
+        retrainBtn.addEventListener('click', retrainModel);
+
+        fetchStatus();
+        fetchRecordStatus();
+        fetchModelStatus();
+        loadGestures();
+
         setInterval(fetchStatus, 500);
+        setInterval(fetchRecordStatus, 500);
+        setInterval(fetchModelStatus, 1500);
+        setInterval(loadGestures, 5000);
     </script>
 </body>
 </html>
