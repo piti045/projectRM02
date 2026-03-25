@@ -9,6 +9,8 @@ import os
 import numpy as np
 
 DATA_PATH = "dataset"
+SEQUENCE_LENGTH = 30
+FEATURE_SIZE = 189
 
 print("=" * 60)
 print("📋 ตรวจสอบ Dataset Structure")
@@ -65,11 +67,11 @@ for action in actions:
         keypoint_size = data.shape[0]
         print(f"     - Keypoint size: {keypoint_size}")
         
-        # ตรวจสอบว่า 375 (Pose:99 + Face:150 + LeftHand:63 + RightHand:63) หรือเปล่า
-        if keypoint_size == 375:
-            print(f"     ✅ Correct (Pose:99 + Face:150 + Hand:63+63 = 375)")
+        # ตรวจสอบตามสเปกปัจจุบันของแอป (189)
+        if keypoint_size == FEATURE_SIZE:
+            print(f"     ✅ Correct (expected {FEATURE_SIZE})")
         else:
-            print(f"     ❌ Unexpected size (expected 375)")
+            print(f"     ❌ Unexpected size (expected {FEATURE_SIZE})")
 
 print("\n" + "=" * 60)
 print("💾 ตรวจสอบ train_model.py data loading")
@@ -87,24 +89,24 @@ for action in actions:
         seq_path = os.path.join(action_path, seq)
         frame_files = sorted([f for f in os.listdir(seq_path) if f.endswith('.npy')],
                              key=lambda x: int(x.replace('.npy', '')))
-        if len(frame_files) == 30:
+        if len(frame_files) == SEQUENCE_LENGTH:
             frames = [np.load(os.path.join(seq_path, f)) for f in frame_files]
             sequences.append(np.array(frames))
             labels.append(label_map[action])
         else:
-            print(f"⚠️  {action}/{seq} มี {len(frame_files)} frames (ต้อง 30) - ข้าม")
+            print(f"⚠️  {action}/{seq} มี {len(frame_files)} frames (ต้อง {SEQUENCE_LENGTH}) - ข้าม")
 
 print(f"\n✅ Sequences loaded: {len(sequences)}")
 print(f"✅ Labels loaded: {len(labels)}")
 
 if sequences:
     X = np.array(sequences)
-    print(f"✅ X shape: {X.shape} (should be [num_sequences, 30, 375])")
+    print(f"✅ X shape: {X.shape} (should be [num_sequences, {SEQUENCE_LENGTH}, {FEATURE_SIZE}])")
     if len(X.shape) >= 2:
-        if X.shape[1] != 30:
-            print(f"   ⚠️  WARNING: 2nd dimension is {X.shape[1]}, expected 30")
-        if len(X.shape) >= 3 and X.shape[2] != 375:
-            print(f"   ⚠️  WARNING: 3rd dimension is {X.shape[2]}, expected 375")
+        if X.shape[1] != SEQUENCE_LENGTH:
+            print(f"   ⚠️  WARNING: 2nd dimension is {X.shape[1]}, expected {SEQUENCE_LENGTH}")
+        if len(X.shape) >= 3 and X.shape[2] != FEATURE_SIZE:
+            print(f"   ⚠️  WARNING: 3rd dimension is {X.shape[2]}, expected {FEATURE_SIZE}")
 
 print("\n" + "=" * 60)
 print("📝 สรุปปัญหา:")

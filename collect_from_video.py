@@ -1,51 +1,72 @@
 import cv2
 import mediapipe as mp
+from mediapipe.tasks import python as _mp_tasks
+from mediapipe.tasks.python import vision as _mp_vision
 import numpy as np
 import os
+import shutil
+import argparse
 
 VIDEO_PATH = "videos"
 DATA_PATH = "dataset"
 SEQUENCE_LENGTH = 30
-FEATURE_SIZE = 375
+POSE_KEYPOINT_IDS = [0, 11, 12, 13, 14, 15, 16, 23, 24]
+FACE_KEYPOINT_IDS = [10, 9, 8, 6, 4, 1, 33, 263, 61, 291, 13, 14]
+FEATURE_SIZE = ((len(POSE_KEYPOINT_IDS) + len(FACE_KEYPOINT_IDS) + 21 + 21) * 3)
 
-mp_holistic = mp.solutions.holistic
+HOLISTIC_MODEL_PATH = "holistic_landmarker.task"
+if not os.path.exists(HOLISTIC_MODEL_PATH):
+    import urllib.request
+    _dl_url = (
+        "https://storage.googleapis.com/mediapipe-models/"
+        "holistic_landmarker/holistic_landmarker/float16/latest/holistic_landmarker.task"
+    )
+    print(f"⬇️  Downloading {HOLISTIC_MODEL_PATH} ...")
+    urllib.request.urlretrieve(_dl_url, HOLISTIC_MODEL_PATH)
+    print(f"✅ Downloaded {HOLISTIC_MODEL_PATH}")
 
-holistic = mp_holistic.Holistic(
-    static_image_mode=False,
-    model_complexity=1,
-    smooth_landmarks=True,
-    min_detection_confidence=0.7,
-    min_tracking_confidence=0.7,
+_base_opts = _mp_tasks.BaseOptions(model_asset_path=HOLISTIC_MODEL_PATH)
+_holistic_opts = _mp_vision.HolisticLandmarkerOptions(
+    base_options=_base_opts,
+    running_mode=_mp_vision.RunningMode.VIDEO,
+    min_pose_detection_confidence=0.7,
+    min_pose_landmarks_confidence=0.7,
+    min_hand_landmarks_confidence=0.7,
+    min_face_detection_confidence=0.7,
+    min_face_landmarks_confidence=0.7,
 )
+holistic = _mp_vision.HolisticLandmarker.create_from_options(_holistic_opts)
 
 
 def extract_landmarks(results):
     data = []
 
-    # Pose: 33 * 3 = 99
+    # Pose: upper-body focus
     if results.pose_landmarks:
-        for lm in results.pose_landmarks.landmark:
+        for idx in POSE_KEYPOINT_IDS:
+            lm = results.pose_landmarks[idx]
             data.extend([lm.x, lm.y, lm.z])
     else:
-        data.extend([0] * 99)
+        data.extend([0] * (len(POSE_KEYPOINT_IDS) * 3))
 
-    # Face: first 50 * 3 = 150
+    # Face: important forehead/eye/mouth refs
     if results.face_landmarks:
-        for lm in results.face_landmarks.landmark[:50]:
+        for idx in FACE_KEYPOINT_IDS:
+            lm = results.face_landmarks[idx]
             data.extend([lm.x, lm.y, lm.z])
     else:
-        data.extend([0] * 150)
+        data.extend([0] * (len(FACE_KEYPOINT_IDS) * 3))
 
     # Left hand: 21 * 3 = 63
     if results.left_hand_landmarks:
-        for lm in results.left_hand_landmarks.landmark:
+        for lm in results.left_hand_landmarks:
             data.extend([lm.x, lm.y, lm.z])
     else:
         data.extend([0] * 63)
 
     # Right hand: 21 * 3 = 63
     if results.right_hand_landmarks:
-        for lm in results.right_hand_landmarks.landmark:
+        for lm in results.right_hand_landmarks:
             data.extend([lm.x, lm.y, lm.z])
     else:
         data.extend([0] * 63)
@@ -80,9 +101,23 @@ if not os.path.exists(VIDEO_PATH):
     print(f"❌ Video folder not found: {VIDEO_PATH}")
     exit()
 
+parser = argparse.ArgumentParser(description="Convert gesture videos to sequence dataset")
+parser.add_argument("--action", type=str, default="", help="Process only one action folder")
+parser.add_argument("--video", type=str, default="", help="Process only one video filename inside action")
+parser.add_argument("--reset", action="store_true", help="Clear existing numeric sequences before processing")
+args = parser.parse_args()
+
 os.makedirs(DATA_PATH, exist_ok=True)
 
-for action in sorted(os.listdir(VIDEO_PATH)):
+all_actions = sorted(os.listdir(VIDEO_PATH))
+if args.action:
+    all_actions = [a for a in all_actions if a == args.action]
+    if not all_actions:
+        print(f"❌ Action not found in videos/: {args.action}")
+        holistic.close()
+        exit()
+
+for action in all_actions:
     action_path = os.path.join(VIDEO_PATH, action)
     if not os.path.isdir(action_path):
         continue
@@ -90,9 +125,23 @@ for action in sorted(os.listdir(VIDEO_PATH)):
     save_path = os.path.join(DATA_PATH, action)
     os.makedirs(save_path, exist_ok=True)
 
+    # ล้าง sequence เดิมของ action นี้เมื่อระบุ --reset
+    if args.reset:
+        for name in os.listdir(save_path):
+            full_path = os.path.join(save_path, name)
+            if os.path.isdir(full_path) and name.isdigit():
+                shutil.rmtree(full_path)
+
     print(f"\n📂 Action: {action}")
 
-    for video_file in sorted(os.listdir(action_path)):
+    candidate_videos = sorted(os.listdir(action_path))
+    if args.video:
+        candidate_videos = [v for v in candidate_videos if v == args.video]
+        if not candidate_videos:
+            print(f"⚠️ Video not found in {action}: {args.video}")
+            continue
+
+    for video_file in candidate_videos:
         video_path = os.path.join(action_path, video_file)
         if not os.path.isfile(video_path):
             continue
@@ -106,6 +155,7 @@ for action in sorted(os.listdir(VIDEO_PATH)):
             continue
 
         frames = []
+        _ts_ms = 0
 
         while True:
             ret, frame = cap.read()
@@ -115,7 +165,9 @@ for action in sorted(os.listdir(VIDEO_PATH)):
             frame = cv2.resize(frame, (640, 480))
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
-            results = holistic.process(rgb)
+            _ts_ms += 33
+            _mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+            results = holistic.detect_for_video(_mp_img, _ts_ms)
             landmarks = extract_landmarks(results)
             frames.append(landmarks)
 
