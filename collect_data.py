@@ -1,145 +1,185 @@
+import argparse
+import os
+import re
+
 import cv2
 import mediapipe as mp
-import numpy as np
-import os
+from mediapipe.tasks import python as _mp_tasks
+from mediapipe.tasks.python import vision as _mp_vision
 
-# ===== กำหนดค่า =====
-actions = ["hello", "hungry", "one", "two", "three", "four", "five"]
-no_sequences = 5  # จำนวน video ต่อ action (เพิ่มขึ้นเพื่อให้ได้ ~100+ sequences)
-sequence_length = 30  # จำนวน frames ต่อ sequence
+from feature_utils import LandmarkFeatureExtractor
+
 DATA_PATH = "dataset"
+SEQUENCE_LENGTH = 30
+HOLISTIC_MODEL_PATH = "holistic_landmarker.task"
+USE_TASK_HOLISTIC = hasattr(_mp_vision, "HolisticLandmarkerOptions")
 
-# ===== ตั้งค่า MediaPipe Holistic =====
-mp_holistic = mp.solutions.holistic
-mp_draw = mp.solutions.drawing_utils
 
-holistic = mp_holistic.Holistic(
-    static_image_mode=False,
-    model_complexity=1,
-    smooth_landmarks=True,
-    min_detection_confidence=0.7,
-    min_tracking_confidence=0.7
-)
+def sanitize_action_name(raw_name):
+    cleaned = raw_name.strip().lower().replace(" ", "_")
+    cleaned = re.sub(r"[^a-z0-9_]+", "", cleaned)
+    cleaned = re.sub(r"_+", "_", cleaned).strip("_")
+    return cleaned
 
-# ===== เปิดกล้อง =====
-cap = cv2.VideoCapture(0, cv2.CAP_DSHOW)
-cap.set(3, 640)
-cap.set(4, 480)
 
-if not cap.isOpened():
-    print("❌ ไม่สามารถเปิดกล้อง")
-    exit()
+def list_action_dirs():
+    if not os.path.exists(DATA_PATH):
+        return []
+    return sorted([d for d in os.listdir(DATA_PATH) if os.path.isdir(os.path.join(DATA_PATH, d))])
 
-def extract_keypoints(results):
-    """
-    แตกเอา keypoints จาก Holistic results
-    - Pose: 33 จุด × 3 = 99
-    - Face: 50 จุด × 3 = 150
-    - LeftHand: 21 จุด × 3 = 63
-    - RightHand: 21 จุด × 3 = 63
-    ===================== รวม = 375
-    """
-    data = []
 
-    # Pose
-    if results.pose_landmarks:
-        for lm in results.pose_landmarks.landmark:
-            data.extend([lm.x, lm.y, lm.z])
+def get_next_sequence_id(action_path):
+    seq_ids = []
+    for name in os.listdir(action_path):
+        full_path = os.path.join(action_path, name)
+        if os.path.isdir(full_path) and name.isdigit():
+            seq_ids.append(int(name))
+    return (max(seq_ids) + 1) if seq_ids else 0
+
+
+def build_holistic_detector():
+    if USE_TASK_HOLISTIC:
+        if not os.path.exists(HOLISTIC_MODEL_PATH):
+            raise FileNotFoundError(f"Missing model file: {HOLISTIC_MODEL_PATH}")
+
+        base_opts = _mp_tasks.BaseOptions(model_asset_path=HOLISTIC_MODEL_PATH)
+        holistic_opts = _mp_vision.HolisticLandmarkerOptions(
+            base_options=base_opts,
+            running_mode=_mp_vision.RunningMode.VIDEO,
+            min_pose_detection_confidence=0.7,
+            min_pose_landmarks_confidence=0.7,
+            min_hand_landmarks_confidence=0.7,
+            min_face_detection_confidence=0.7,
+            min_face_landmarks_confidence=0.7,
+        )
+        return _mp_vision.HolisticLandmarker.create_from_options(holistic_opts)
+
+    print("⚠️ HolisticLandmarker Tasks API not available, falling back to mp.solutions.holistic")
+    return mp.solutions.holistic.Holistic(
+        static_image_mode=False,
+        model_complexity=1,
+        smooth_landmarks=True,
+        min_detection_confidence=0.7,
+        min_tracking_confidence=0.7,
+    )
+
+
+def detect_holistic(holistic, rgb_frame, timestamp_ms):
+    if USE_TASK_HOLISTIC:
+        mp_img = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
+        return holistic.detect_for_video(mp_img, timestamp_ms)
+    return holistic.process(rgb_frame)
+
+
+def parse_args():
+    parser = argparse.ArgumentParser(description="Collect webcam sequences for gesture classes")
+    parser.add_argument(
+        "--actions",
+        type=str,
+        default="",
+        help="Comma-separated class names (ex: hello,thank_you,how_are_you). If empty, use existing dataset folders.",
+    )
+    parser.add_argument("--sequences", type=int, default=5, help="Sequences per action")
+    parser.add_argument("--camera", type=int, default=0, help="Camera index")
+    return parser.parse_args()
+
+
+def main():
+    args = parse_args()
+
+    if args.actions.strip():
+        actions = [sanitize_action_name(x) for x in args.actions.split(",")]
+        actions = [x for x in actions if x]
     else:
-        data.extend([0]*99)
+        actions = list_action_dirs()
 
-    # Face
-    if results.face_landmarks:
-        for lm in results.face_landmarks.landmark[:50]:
-            data.extend([lm.x, lm.y, lm.z])
-    else:
-        data.extend([0]*150)
+    if not actions:
+        print("❌ No actions found. Use --actions to define classes first")
+        return
 
-    # Left Hand
-    if results.left_hand_landmarks:
-        for lm in results.left_hand_landmarks.landmark:
-            data.extend([lm.x, lm.y, lm.z])
-    else:
-        data.extend([0]*63)
+    os.makedirs(DATA_PATH, exist_ok=True)
+    holistic = build_holistic_detector()
 
-    # Right Hand
-    if results.right_hand_landmarks:
-        for lm in results.right_hand_landmarks.landmark:
-            data.extend([lm.x, lm.y, lm.z])
-    else:
-        data.extend([0]*63)
+    cap = cv2.VideoCapture(args.camera, cv2.CAP_DSHOW)
+    cap.set(3, 640)
+    cap.set(4, 480)
 
-    return np.array(data)
+    if not cap.isOpened():
+        print("❌ ไม่สามารถเปิดกล้อง")
+        holistic.close()
+        return
 
-# ===== สร้างโครงสร้าง dataset/action/seq_num/ =====
-for action in actions:
-    for seq in range(no_sequences):
-        os.makedirs(os.path.join(DATA_PATH, action, str(seq)), exist_ok=True)
+    print("✅ Ready to collect")
+    print(f"📝 Actions: {actions}")
+    print(f"📝 Sequences per action: {args.sequences}")
+    print(f"📝 Frames per sequence: {SEQUENCE_LENGTH}")
 
-print("✅ โครงสร้าง dataset สร้างเรียบร้อย")
-print(f"📝 Actions: {actions}")
-print(f"📝 Sequences per action: {no_sequences}")
-print(f"📝 Frames per sequence: {sequence_length}")
+    ts_ms = 0
 
-# ===== เก็บข้อมูล =====
-for action in actions:
-    for seq in range(no_sequences):
-        print(f"\n🎥 Recording: {action} - Sequence {seq}")
-        
-        for frame_num in range(sequence_length):
-            ret, frame = cap.read()
-            
-            if not ret:
-                print(f"⚠️  Failed to read frame {frame_num}")
-                continue
-            
-            frame = cv2.flip(frame, 1)
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            
-            # ===== ตรวจจับท่าทาง =====
-            try:
-                results = holistic.process(rgb)
-            except Exception as e:
-                print(f"⚠️  Detection error: {e}")
-                continue
-            
-            # ===== แตกเอา keypoints =====
-            keypoints = extract_keypoints(results)
-            
-            # ===== บันทึก =====
-            file_path = os.path.join(DATA_PATH, action, str(seq), str(frame_num))
-            np.save(file_path, keypoints)
-            
-            # ===== แสดงบนหน้าจอ =====
-            cv2.putText(frame, f"{action} {seq}/{no_sequences-1}", (10, 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            cv2.putText(frame, f"Frame: {frame_num}/{sequence_length-1}", (10, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2)
-            
-            # วาด landmarks
-            if results.left_hand_landmarks:
-                mp_draw.draw_landmarks(frame, results.left_hand_landmarks, 
-                                      mp_holistic.HAND_CONNECTIONS)
-            if results.right_hand_landmarks:
-                mp_draw.draw_landmarks(frame, results.right_hand_landmarks, 
-                                      mp_holistic.HAND_CONNECTIONS)
-            if results.pose_landmarks:
-                mp_draw.draw_landmarks(frame, results.pose_landmarks, 
-                                      mp_holistic.POSE_CONNECTIONS)
-            
-            cv2.imshow("Collecting Data", frame)
-            
-            # Press 'q' to quit, 'escape' to skip this action
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord('q'):
-                print("\n❌ Quitting...")
-                cap.release()
-                cv2.destroyAllWindows()
-                exit()
-            elif key == 27:  # Escape
-                print(f"\n⏭️  Skipping {action}")
-                break
+    try:
+        for action in actions:
+            action_path = os.path.join(DATA_PATH, action)
+            os.makedirs(action_path, exist_ok=True)
 
-cap.release()
-cv2.destroyAllWindows()
-print("\n✅ เก็บข้อมูลเสร็จแล้ว!")
+            for _ in range(args.sequences):
+                seq_id = get_next_sequence_id(action_path)
+                seq_path = os.path.join(action_path, str(seq_id))
+                os.makedirs(seq_path, exist_ok=True)
+                feature_extractor = LandmarkFeatureExtractor()
+
+                print(f"\n🎥 Recording: {action}/{seq_id}")
+                frame_idx = 0
+
+                while frame_idx < SEQUENCE_LENGTH:
+                    ret, frame = cap.read()
+                    if not ret:
+                        continue
+
+                    frame = cv2.flip(frame, 1)
+                    rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                    ts_ms += 33
+                    results = detect_holistic(holistic, rgb, ts_ms)
+                    keypoints = feature_extractor.extract(results)
+
+                    np.save(os.path.join(seq_path, f"{frame_idx}.npy"), keypoints)
+
+                    cv2.putText(
+                        frame,
+                        f"{action}/{seq_id} frame {frame_idx + 1}/{SEQUENCE_LENGTH}",
+                        (10, 35),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.75,
+                        (0, 255, 0),
+                        2,
+                    )
+                    cv2.putText(
+                        frame,
+                        "Press q to quit | Esc to skip sequence",
+                        (10, 70),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.6,
+                        (255, 255, 255),
+                        1,
+                    )
+                    cv2.imshow("Collecting Data", frame)
+
+                    key = cv2.waitKey(1) & 0xFF
+                    if key == ord("q"):
+                        print("\n❌ Quitting...")
+                        return
+                    if key == 27:
+                        print(f"⏭️ Skipped sequence {action}/{seq_id}")
+                        break
+
+                    frame_idx += 1
+    finally:
+        cap.release()
+        holistic.close()
+        cv2.destroyAllWindows()
+
+    print("\n✅ เก็บข้อมูลเสร็จแล้ว")
+
+
+if __name__ == "__main__":
+    main()

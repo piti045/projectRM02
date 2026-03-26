@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Calibration</title>
+    <style>
+        :root {
+            --bg: #0e131a;
+            --panel: #17212d;
+            --line: #2b3a4d;
+            --text: #eaf2ff;
+            --muted: #9eb2cc;
+            --accent: #73ccff;
+            --ok: #58e6a8;
+            --warn: #ffc37b;
+        }
+
+        * { box-sizing: border-box; }
+
+        body {
+            margin: 0;
+            min-height: 100vh;
+            font-family: "Segoe UI", Tahoma, sans-serif;
+            color: var(--text);
+            background: radial-gradient(circle at 18% 15%, #1b2a3b, #0d131a 45%, #090d12 100%);
+        }
+
+        .page {
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 22px;
+        }
+
+        h1 {
+            margin: 0 0 10px;
+            font-size: 26px;
+        }
+
+        p.note {
+            margin: 0 0 18px;
+            color: var(--muted);
+            font-size: 14px;
+        }
+
+        .card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 14px;
+            padding: 14px;
+            margin-bottom: 14px;
+        }
+
+        .row {
+            display: grid;
+            grid-template-columns: 180px 1fr;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        label {
+            font-size: 14px;
+            color: var(--muted);
+        }
+
+        input, select {
+            width: 100%;
+            border: 1px solid var(--line);
+            border-radius: 10px;
+            padding: 8px 10px;
+            background: #111923;
+            color: var(--text);
+        }
+
+        .inline {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .inline input[type="checkbox"] {
+            width: auto;
+        }
+
+        .btns {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-top: 12px;
+        }
+
+        button, a.btn-link {
+            border: 1px solid transparent;
+            border-radius: 10px;
+            padding: 9px 12px;
+            background: var(--accent);
+            color: #0b1a2a;
+            font-weight: 700;
+            cursor: pointer;
+            text-decoration: none;
+            font-size: 14px;
+        }
+
+        a.btn-link {
+            background: transparent;
+            border-color: var(--line);
+            color: var(--text);
+        }
+
+        .status {
+            margin-top: 8px;
+            font-size: 14px;
+            min-height: 20px;
+            color: var(--warn);
+        }
+
+        .status.ok {
+            color: var(--ok);
+        }
+    </style>
+</head>
+<body>
+    <div class="page">
+        <h1>Calibration</h1>
+        <p class="note">ปรับ threshold ให้เหมาะกับการใช้งานจริง และแก้ภาพกล้องกลับด้าน</p>
+
+        <div class="card">
+            <div class="row">
+                <label for="camera-mirror">Camera Mirror</label>
+                <div class="inline">
+                    <input id="camera-mirror" type="checkbox" title="Camera mirror toggle">
+                    <span>เปิดเมื่อภาพกลับซ้ายขวา</span>
+                </div>
+            </div>
+
+            <div class="row">
+                <label for="g-display">Global Display Confidence</label>
+                <input id="g-display" type="number" min="0.05" max="0.99" step="0.01" title="Global display confidence threshold">
+            </div>
+            <div class="row">
+                <label for="g-sentence">Global Sentence Confidence</label>
+                <input id="g-sentence" type="number" min="0.05" max="0.99" step="0.01" title="Global sentence confidence threshold">
+            </div>
+            <div class="row">
+                <label for="g-margin">Global Margin</label>
+                <input id="g-margin" type="number" min="0.01" max="0.80" step="0.01" title="Global confidence margin threshold">
+            </div>
+            <div class="row">
+                <label for="g-vote">Global Vote Ratio</label>
+                <input id="g-vote" type="number" min="0.30" max="1.00" step="0.01" title="Global vote ratio threshold">
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="row">
+                <label for="action-select">Per-class Action</label>
+                <select id="action-select" title="Select action class"></select>
+            </div>
+            <div class="row">
+                <label for="c-display">Display Confidence</label>
+                <input id="c-display" type="number" min="0.05" max="0.99" step="0.01" title="Class display confidence threshold">
+            </div>
+            <div class="row">
+                <label for="c-sentence">Sentence Confidence</label>
+                <input id="c-sentence" type="number" min="0.05" max="0.99" step="0.01" title="Class sentence confidence threshold">
+            </div>
+            <div class="row">
+                <label for="c-margin">Margin</label>
+                <input id="c-margin" type="number" min="0.01" max="0.80" step="0.01" title="Class confidence margin threshold">
+            </div>
+            <div class="row">
+                <label for="c-vote">Vote Ratio</label>
+                <input id="c-vote" type="number" min="0.30" max="1.00" step="0.01" title="Class vote ratio threshold">
+            </div>
+
+            <div class="btns">
+                <button id="apply-class">Apply Class Threshold</button>
+                <button id="clear-class">Clear Class Override</button>
+            </div>
+        </div>
+
+        <div class="btns">
+            <button id="save-all">Save Calibration</button>
+            <a class="btn-link" href="/">Back to Translation</a>
+        </div>
+        <p id="status" class="status"></p>
+    </div>
+
+    <script>
+        const cameraMirrorEl = document.getElementById('camera-mirror');
+        const gDisplayEl = document.getElementById('g-display');
+        const gSentenceEl = document.getElementById('g-sentence');
+        const gMarginEl = document.getElementById('g-margin');
+        const gVoteEl = document.getElementById('g-vote');
+
+        const actionSelectEl = document.getElementById('action-select');
+        const cDisplayEl = document.getElementById('c-display');
+        const cSentenceEl = document.getElementById('c-sentence');
+        const cMarginEl = document.getElementById('c-margin');
+        const cVoteEl = document.getElementById('c-vote');
+
+        const applyClassBtn = document.getElementById('apply-class');
+        const clearClassBtn = document.getElementById('clear-class');
+        const saveAllBtn = document.getElementById('save-all');
+        const statusEl = document.getElementById('status');
+
+        let config = null;
+        let actions = [];
+
+        function setStatus(msg, ok=false) {
+            statusEl.textContent = msg;
+            statusEl.className = ok ? 'status ok' : 'status';
+        }
+
+        function currentGlobal() {
+            return {
+                display_confidence: Number(gDisplayEl.value),
+                sentence_confidence: Number(gSentenceEl.value),
+                margin: Number(gMarginEl.value),
+                vote_ratio: Number(gVoteEl.value),
+            };
+        }
+
+        function loadClassFields(action) {
+            const g = currentGlobal();
+            const classCfg = (config.class_thresholds || {})[action] || g;
+            cDisplayEl.value = Number(classCfg.display_confidence).toFixed(2);
+            cSentenceEl.value = Number(classCfg.sentence_confidence).toFixed(2);
+            cMarginEl.value = Number(classCfg.margin).toFixed(2);
+            cVoteEl.value = Number(classCfg.vote_ratio).toFixed(2);
+        }
+
+        function syncUI() {
+            if (!config) return;
+            const g = config.global || {};
+            cameraMirrorEl.checked = !!config.camera_mirror;
+            gDisplayEl.value = Number(g.display_confidence || 0.45).toFixed(2);
+            gSentenceEl.value = Number(g.sentence_confidence || 0.60).toFixed(2);
+            gMarginEl.value = Number(g.margin || 0.18).toFixed(2);
+            gVoteEl.value = Number(g.vote_ratio || 0.60).toFixed(2);
+
+            actionSelectEl.innerHTML = '';
+            for (const action of actions) {
+                const option = document.createElement('option');
+                option.value = action;
+                option.textContent = action;
+                actionSelectEl.appendChild(option);
+            }
+            if (actions.length > 0) {
+                loadClassFields(actions[0]);
+            }
+        }
+
+        async function fetchCalibration() {
+            const res = await fetch('/api/calibration');
+            const data = await res.json();
+            config = data.config || {};
+            actions = data.actions || [];
+            syncUI();
+        }
+
+        async function saveCalibration() {
+            config.camera_mirror = cameraMirrorEl.checked;
+            config.global = currentGlobal();
+
+            const res = await fetch('/api/calibration', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ config }),
+            });
+            const data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.error || 'Save failed');
+            }
+            config = data.config || config;
+            setStatus('Saved calibration', true);
+        }
+
+        actionSelectEl.addEventListener('change', () => {
+            loadClassFields(actionSelectEl.value);
+        });
+
+        applyClassBtn.addEventListener('click', () => {
+            const action = actionSelectEl.value;
+            if (!action) return;
+            if (!config.class_thresholds) config.class_thresholds = {};
+            config.class_thresholds[action] = {
+                display_confidence: Number(cDisplayEl.value),
+                sentence_confidence: Number(cSentenceEl.value),
+                margin: Number(cMarginEl.value),
+                vote_ratio: Number(cVoteEl.value),
+            };
+            setStatus(`Applied class override: ${action}`);
+        });
+
+        clearClassBtn.addEventListener('click', () => {
+            const action = actionSelectEl.value;
+            if (!action || !config.class_thresholds) return;
+            delete config.class_thresholds[action];
+            loadClassFields(action);
+            setStatus(`Cleared class override: ${action}`);
+        });
+
+        saveAllBtn.addEventListener('click', async () => {
+            try {
+                await saveCalibration();
+            } catch (err) {
+                setStatus(err.message || 'Save failed');
+            }
+        });
+
+        fetchCalibration().catch(() => {
+            setStatus('Failed to load calibration data');
+        });
+    </script>
+</body>
+</html>

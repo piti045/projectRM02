@@ -8,9 +8,15 @@
 import os
 import numpy as np
 
+from feature_utils import FEATURE_SIZE
+
 DATA_PATH = "dataset"
 SEQUENCE_LENGTH = 30
-FEATURE_SIZE = 189
+
+
+def frame_sort_key(name: str) -> int:
+    stem, _ = os.path.splitext(name)
+    return int(stem) if stem.isdigit() else 10**9
 
 print("=" * 60)
 print("📋 ตรวจสอบ Dataset Structure")
@@ -87,8 +93,10 @@ for action in actions:
     seq_dirs = sorted([d for d in os.listdir(action_path) if os.path.isdir(os.path.join(action_path, d))])
     for seq in seq_dirs:
         seq_path = os.path.join(action_path, seq)
-        frame_files = sorted([f for f in os.listdir(seq_path) if f.endswith('.npy')],
-                             key=lambda x: int(x.replace('.npy', '')))
+        frame_files = sorted(
+            [f for f in os.listdir(seq_path) if f.endswith('.npy')],
+            key=frame_sort_key,
+        )
         if len(frame_files) == SEQUENCE_LENGTH:
             frames = [np.load(os.path.join(seq_path, f)) for f in frame_files]
             sequences.append(np.array(frames))

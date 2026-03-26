@@ -1,9 +1,10 @@
 import os
 import numpy as np
 
+from feature_utils import FEATURE_SIZE
+
 DATA_PATH = "dataset"
 SEQUENCE_LENGTH = 30
-FEATURE_SIZE = 189
 
 print("=== Dataset Summary ===")
 total = 0
